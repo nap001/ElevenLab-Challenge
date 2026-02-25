@@ -1,3 +1,5 @@
+<img width="1902" height="861" alt="image" src="https://github.com/user-attachments/assets/7dd22ebb-0e7b-4d3e-8ea1-44580cf1f5be" />
+
 # Deep-Sync: Emotional Wellness Journal
 
 Deep-Sync is an AI-powered emotional wellness platform designed to provide a supportive, voice-first environment for journaling and reflection. Built for the **ElevenLabs Hackathon**, it leverages cutting-edge conversational AI to turn the act of journaling into a dynamic, interactive dialogue.
