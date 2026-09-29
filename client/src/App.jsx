@@ -1,62 +1,71 @@
+/**
+ * App — root component.
+ *
+ * Responsibilities:
+ *  - Resolve auth state via useAuth
+ *  - Manage top-level view routing (journal ↔ history)
+ *  - Coordinate sign-out
+ *
+ * Business logic (API calls, conversation management) lives in hooks/services.
+ */
 import React, { useState } from 'react';
-import { useConversation } from '@elevenlabs/react';
-import axios from 'axios';
-import JournalView from './JournalView';
-import HistoryView from './HistoryView';
-import { API_BASE_URL } from './config';
+import { signOut } from 'firebase/auth';
+import { auth } from './config/firebase';
+import { useAuth } from './hooks/useAuth';
+import { useConversationSession } from './hooks/useConversationSession';
+import AuthPage from './pages/AuthPage';
+import JournalView from './pages/JournalView';
+import HistoryView from './pages/HistoryView';
 
 export default function App() {
-  const [view, setView] = useState('journal'); 
-  const [connectionStatus, setConnectionStatus] = useState('disconnected');
-  const [transcript, setTranscript] = useState(''); 
+  const { user, isLoading } = useAuth();
+  const [view, setView] = useState('journal');
 
-  const conversation = useConversation({
-    onConnect: () => {
-      setConnectionStatus('connected');
-      setTranscript(''); 
-    },
-    onDisconnect: () => setConnectionStatus('disconnected'),
-    onMessage: (message) => {
-      const text = message.message || message.text; 
-      if (text) setTranscript(prev => prev + "\n" + text);
-    },
-    onError: (e) => console.error(e),
-  });
+  const { connectionStatus, isSpeaking, startCall, endCall } = useConversationSession(user);
 
-  const startCall = async () => {
-    try {
-      const { data } = await axios.get(`${API_BASE_URL}/api/get-signed-url`);
-      await conversation.startSession({ signedUrl: data.signedUrl });
-    } catch (error) {
-      console.error("Failed to start call:", error);
+  const handleEndCall = async () => {
+    const result = await endCall();
+    if (result) {
+      alert('Entry saved to Neural Log.');
     }
   };
 
-  const endCall = async () => {
-    await conversation.endSession();
-    
-    // Simple logic to prevent saving empty calls
-    if (transcript.length > 5) {
-      console.log("Analyzing session...");
-      // Show a toast or notification here if you want
-      await axios.post(`${API_BASE_URL}/api/analyze-journal`, { transcript });
-      alert("Entry saved to Neural Log.");
-    }
+  const handleSignOut = async () => {
+    await signOut(auth);
+    setView('journal');
   };
 
+  // ── Loading ──────────────────────────────────────────────────────────────
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-900">
+        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // ── Unauthenticated ──────────────────────────────────────────────────────
+  if (!user) {
+    return <AuthPage />;
+  }
+
+  // ── Authenticated ────────────────────────────────────────────────────────
   return (
     <>
       {view === 'journal' ? (
-        <JournalView 
+        <JournalView
           connectionStatus={connectionStatus}
-          isSpeaking={conversation.isSpeaking}
+          isSpeaking={isSpeaking}
           onStartCall={startCall}
-          onEndCall={endCall}
+          onEndCall={handleEndCall}
           onViewHistory={() => setView('history')}
+          user={user}
+          onSignOut={handleSignOut}
         />
       ) : (
-        <HistoryView 
-          onBack={() => setView('journal')} 
+        <HistoryView
+          user={user}
+          onBack={() => setView('journal')}
         />
       )}
     </>

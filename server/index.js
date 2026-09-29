@@ -1,83 +1,88 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const axios = require('axios');
-const fs = require('fs'); // Import File System module
+/**
+ * Entry point for the DEEP-SYNC backend server.
+ *
+ * Responsibilities:
+ *  - Bootstrap environment variables
+ *  - Write the service-account file in production (if env var is set)
+ *  - Configure Express with security middleware
+ *  - Mount API routes
+ *  - Start the HTTP server
+ */
 
-// --- TRICK: Recreate Key File in Production ---
-// On Render, we can't upload files easily, so we paste the JSON content 
-// into an Environment Variable named "GOOGLE_CREDENTIALS_JSON".
+'use strict';
+
+require('dotenv').config();
+
+const fs = require('fs');
+
+// In production environments (e.g. Render, Railway) the service-account JSON
+// is stored as a secret env var to avoid committing it to the repo.
 if (process.env.GOOGLE_CREDENTIALS_JSON) {
-  console.log("Creating temporary service-account.json file...");
+  console.log('[Boot] Writing service-account.json from environment variable...');
   fs.writeFileSync('./service-account.json', process.env.GOOGLE_CREDENTIALS_JSON);
 }
 
-// 1. Firebase Admin Setup
-const admin = require('firebase-admin');
-// Now this file definitely exists, either locally or created above
-const serviceAccount = require('./service-account.json'); 
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
-const db = admin.firestore();
-
-// 2. Vertex AI Setup
-const { VertexAI } = require('@google-cloud/vertexai');
-const vertexAI = new VertexAI({ 
-    project: process.env.GOOGLE_CLOUD_PROJECT_ID, 
-    location: 'us-central1' 
-});
-const model = vertexAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+const apiRouter = require('./src/routes/api');
 
 const app = express();
-app.use(cors()); // Allow all connections (easiest for hackathons)
-app.use(express.json());
 
-app.get('/api/get-signed-url', async (req, res) => {
-  try {
-    const response = await axios.get(
-      `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${process.env.AGENT_ID}`,
-      { headers: { 'xi-api-key': process.env.XI_API_KEY } }
-    );
-    res.json({ signedUrl: response.data.signed_url });
-  } catch (error) {
-    console.error('Error:', error.message);
-    res.status(500).json({ error: 'Failed to generate token' });
-  }
+// ── Security headers ─────────────────────────────────────────────────────────
+app.use(helmet());
+
+// ── CORS ─────────────────────────────────────────────────────────────────────
+// Restrict to the known client origins. Adjust ALLOWED_ORIGIN in .env for prod.
+const allowedOrigins = (process.env.ALLOWED_ORIGIN ?? 'http://localhost:5173')
+  .split(',')
+  .map((o) => o.trim());
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow server-to-server or same-origin requests (no Origin header)
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS: origin "${origin}" not allowed`));
+      }
+    },
+  })
+);
+
+// ── Body parsing ─────────────────────────────────────────────────────────────
+app.use(express.json({ limit: '50kb' })); // reject unreasonably large payloads
+
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,                  // limit each IP to 100 requests per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please try again later.' },
+});
+app.use('/api', limiter);
+
+// ── Routes ────────────────────────────────────────────────────────────────────
+app.use('/api', apiRouter);
+
+// ── 404 handler ───────────────────────────────────────────────────────────────
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found' });
 });
 
-app.post('/api/analyze-journal', async (req, res) => {
-  const { transcript } = req.body;
-  try {
-    const prompt = `Analyze this journal: "${transcript}". Return JSON with mood, summary, advice.`;
-    const result = await model.generateContent(prompt);
-    const text = result.response.candidates[0].content.parts[0].text;
-    const analysis = JSON.parse(text.replace(/```json|```/g, '').trim());
-
-    const entry = {
-      timestamp: new Date().toISOString(),
-      transcript,
-      ...analysis
-    };
-    await db.collection('journal_entries').add(entry);
-    res.json({ success: true, data: entry });
-  } catch (error) {
-    console.error('Analysis failed:', error);
-    res.status(500).json({ error: 'Analysis failed' });
-  }
+// ── Global error handler ──────────────────────────────────────────────────────
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('[Server Error]', err.message);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
-app.get('/api/history', async (req, res) => {
-  try {
-    const snapshot = await db.collection('journal_entries').orderBy('timestamp', 'desc').get();
-    const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    res.json(history);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch history' });
-  }
+// ── Start ─────────────────────────────────────────────────────────────────────
+const PORT = process.env.PORT ?? 3001;
+app.listen(PORT, () => {
+  console.log(`[Server] Backend running on port ${PORT}`);
 });
-
-// Use the PORT variable provided by the hosting service
-const PORT = process.env.PORT;
-app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
