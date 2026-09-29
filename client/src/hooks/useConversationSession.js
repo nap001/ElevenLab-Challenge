@@ -4,7 +4,7 @@
  *
  * @param {import('firebase/auth').User} user - Authenticated Firebase user.
  * @returns {{
- *   connectionStatus: 'connected' | 'disconnected',
+ *   connectionStatus: 'ready' | 'connecting' | 'connected',
  *   isSpeaking: boolean,
  *   transcript: string,
  *   startCall: () => Promise<void>,
@@ -18,7 +18,7 @@ import { fetchSignedUrl, analyzeJournal } from '../services/api';
 const MIN_TRANSCRIPT_LENGTH = 5;
 
 export function useConversationSession(user) {
-  const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  const [connectionStatus, setConnectionStatus] = useState('ready');
   const [transcript, setTranscript] = useState('');
 
   const conversation = useConversation({
@@ -26,25 +26,31 @@ export function useConversationSession(user) {
       setConnectionStatus('connected');
       setTranscript('');
     },
-    onDisconnect: () => setConnectionStatus('disconnected'),
+    onDisconnect: () => setConnectionStatus('ready'),
     onMessage: (message) => {
       const text = message.message || message.text;
       if (text) setTranscript((prev) => `${prev}\n${text}`);
     },
-    onError: (err) => console.error('[ElevenLabs]', err),
+    onError: (err) => {
+      console.error('[ElevenLabs]', err);
+      setConnectionStatus('ready');
+    },
   });
 
   const startCall = useCallback(async () => {
     try {
+      setConnectionStatus('connecting');
       const signedUrl = await fetchSignedUrl(user);
       await conversation.startSession({ signedUrl });
     } catch (err) {
       console.error('[startCall] Failed:', err.message);
+      setConnectionStatus('ready');
     }
   }, [user, conversation]);
 
   const endCall = useCallback(async () => {
     await conversation.endSession();
+    setConnectionStatus('ready');
     if (transcript.trim().length > MIN_TRANSCRIPT_LENGTH) {
       try {
         const result = await analyzeJournal(user, transcript);

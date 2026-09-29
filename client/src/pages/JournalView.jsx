@@ -15,6 +15,7 @@ export default function JournalView({
   onSignOut,
 }) {
   const isConnected = connectionStatus === 'connected';
+  const isConnecting = connectionStatus === 'connecting';
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-white font-sans relative overflow-hidden">
@@ -107,20 +108,31 @@ export default function JournalView({
         <button
           id={isConnected ? 'end-call-btn' : 'start-call-btn'}
           onClick={isConnected ? onEndCall : onStartCall}
+          disabled={isConnecting}
           className={[
             'px-10 py-4 rounded-full font-medium text-lg transition-all',
             isConnected
               ? 'bg-red-500 hover:bg-red-600'
+              : isConnecting
+              ? 'bg-blue-600/70 cursor-wait'
               : 'bg-blue-600 hover:bg-blue-500',
           ].join(' ')}
         >
-          {isConnected ? 'End Session' : 'Start Check-in'}
+          {isConnected ? 'End Session' : isConnecting ? 'Connecting...' : 'Start Check-in'}
         </button>
 
         {/* Status indicator */}
         <p className="mt-8 text-xs font-mono text-slate-500 uppercase">
           Status:{' '}
-          <span className={isConnected ? 'text-green-400' : 'text-slate-400'}>
+          <span
+            className={
+              isConnected
+                ? 'text-green-400'
+                : isConnecting
+                ? 'text-yellow-400 animate-pulse'
+                : 'text-emerald-400'
+            }
+          >
             {connectionStatus}
           </span>
         </p>
