@@ -121,38 +121,3 @@ cd client && npm run dev
 
 Open **http://localhost:5173** in your browser.
 
----
-
-## ☁️ Deploying (so anyone can use it)
-
-### Backend → [Render](https://render.com) (free tier)
-
-1. Push your code to GitHub
-2. On Render: **New → Web Service** → connect your repo
-3. Set **Root Directory** to `server`
-4. Set **Build Command**: `npm install`  
-   **Start Command**: `node index.js`
-5. Add all environment variables from `server/.env.example` in the Render dashboard
-6. For `service-account.json`: paste the entire file contents as a single JSON string into the env var `GOOGLE_CREDENTIALS_JSON` — the server writes it to disk automatically on startup
-
-### Frontend → [Vercel](https://vercel.com) (free tier)
-
-1. On Vercel: **Add New Project** → import your GitHub repo
-2. Set **Root Directory** to `client`
-3. Add all environment variables from `client/.env.local.example` in the Vercel dashboard
-4. Set `VITE_API_URL` to your Render backend URL (e.g. `https://deep-sync-api.onrender.com`)
-5. Deploy — Vercel handles the build automatically
-
-Once both are deployed, update the **Live Demo** badge link at the top of this README with your Vercel URL.
-
----
-
-## 🔒 Security Notes
-
-- All API keys live in `.env` / `.env.local` files that are **git-ignored** — never hardcode secrets in source files
-- The backend validates a Firebase ID token on every request — users can only access their own data
-- The ElevenLabs `xi-api-key` is never sent to the browser — the backend fetches a short-lived signed URL instead
-
-## 📄 License
-
-MIT
