@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  backend-check:
+    name: Backend lint & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    # Dummy values only: every external service is mocked, CI never calls real APIs.
+    env:
+      NODE_ENV: test
+      GEMINI_API_KEY: dummy-gemini-key
+      AGENT_ID: dummy-agent-id
+      XI_API_KEY: dummy-xi-api-key
+      ALLOWED_ORIGIN: http://localhost:5173
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+  frontend-check:
+    name: Frontend lint & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    env:
+      VITE_API_URL: http://localhost:3001
+      VITE_FIREBASE_API_KEY: dummy
+      VITE_FIREBASE_AUTH_DOMAIN: dummy.firebaseapp.com
+      VITE_FIREBASE_PROJECT_ID: dummy
+      VITE_FIREBASE_STORAGE_BUCKET: dummy.firebasestorage.app
+      VITE_FIREBASE_MESSAGING_SENDER_ID: "0"
+      VITE_FIREBASE_APP_ID: dummy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  docker-build:
+    name: Docker images build
+    runs-on: ubuntu-latest
+    needs: [backend-check, frontend-check]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./server
+          push: false
+          tags: deep-sync-backend:ci
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build frontend image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./client
+          push: false
+          tags: deep-sync-frontend:ci
+          build-args: |
+            VITE_API_URL=http://localhost:3001
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
