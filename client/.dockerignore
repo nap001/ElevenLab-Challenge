@@ -1,0 +1,25 @@
+# Dependencies & build output
+node_modules
+dist
+coverage
+
+# Local env files — build-time values are passed as build args instead
+.env
+.env.*
+!.env.local.example
+
+# VCS / editor / OS
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Docker files themselves
+Dockerfile
+.dockerignore

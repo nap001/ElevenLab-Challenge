@@ -1,0 +1,61 @@
+# Deep-Sync: backend (Express) + frontend (Nginx-served React build).
+#
+#   cp .env.example .env     # then fill in real values
+#   docker compose up --build
+#
+# Frontend: http://localhost:8080   Backend: http://localhost:3001/health
+
+name: deep-sync
+
+services:
+  backend:
+    build:
+      context: ./server
+    image: deep-sync-backend:local
+    init: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    # Runtime secrets (AGENT_ID, XI_API_KEY, GEMINI_API_KEY, GOOGLE_CREDENTIALS_JSON)
+    # come from the root .env file. `required: false` lets `docker compose build`
+    # work in CI where no .env exists.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      # Origin the browser loads the frontend from (must match the frontend port below).
+      ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-http://localhost:8080}
+    ports:
+      - "3001:3001"
+    networks:
+      - deep-sync
+
+  frontend:
+    build:
+      context: ./client
+      # Vite bakes these into the static bundle at build time (public web config).
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3001}
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-}
+        VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET:-}
+        VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID:-}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:-}
+    image: deep-sync-frontend:local
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    networks:
+      - deep-sync
+
+networks:
+  deep-sync:
+    driver: bridge

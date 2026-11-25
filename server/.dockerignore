@@ -1,0 +1,29 @@
+# Dependencies & build output
+node_modules
+npm-debug.log*
+coverage
+
+# Secrets — never bake into an image
+.env
+.env.*
+!.env.example
+service-account.json
+
+# VCS / editor / OS
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Tests, lint config and logs (not needed at runtime)
+tests
+scripts
+eslint.config.js
+*.log
+*.test.js
+
+# Docker files themselves
+Dockerfile
+.dockerignore
